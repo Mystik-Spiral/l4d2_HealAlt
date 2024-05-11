@@ -1,0 +1,72 @@
+﻿"Phrases"
+{
+	"DoNotNeedToHeal"
+	{
+		"#format" "{1:s}"
+		"en"	"You do not need to heal and should heal {1} instead."
+		"fr"	"Vous n'avez pas besoin de soigner et devriez plutôt soigner {1}."
+		"es"	"No necesitas curarte y deberías curar a {1} en su lugar."
+		"ru"	"Вам не нужно лечиться, вместо этого вам следует лечить {1}."
+		"zho" 	"您不需要使用急救箱，而应该使用{1}上的急救箱。"
+	}
+	
+	"HealedSelf"
+	{
+		"#format" "{1:s}"
+		"en"	"{1} healed self."
+		"fr"	"{1} s'est guéri."
+		"es"	"{1} se curó a sí mismo."
+		"ru"	"{1} исцелил себя."
+		"zho" 	"{1}治愈了自己。"
+	}
+	
+	"HealedFriend"
+	{
+		"#format" "{1:s},{2:s}"
+		"en"	"{1} healed {2}."
+		"fr"	"{1} a guéri {2}."
+		"es"	"{1} curó a {2}."
+		"ru"	"{1} исцелил {2}."
+		"zho" 	"{1}治愈了{2}。"
+	}
+	
+	"DirectorHeal"
+	{
+		"#format" "{1:s}"
+		"en"	"{1} will be healed by the Director."
+		"fr"	"{1} sera guérie par le Directeur."
+		"es"	"{1} será sanado por el Director."
+		"ru"	"{1} будет исцелен Директор."
+		"zho" 	"{1}会被主任治愈。"
+	}
+	
+	"TookFAK"
+	{
+		"#format" "{1:s}"
+		"en"	"{1} took a first aid kit."
+		"fr"	"{1} a pris une trousse de premiers secours."
+		"es"	"{1} tomó un botiquín de primeros auxilios."
+		"ru"	"{1} взял аптечку."
+		"zho" 	"{1}拿了一个急救箱。"
+	}
+	
+	"GaveAdren"
+	{
+		"#format" "{1:s),{2:s}"
+		"en"	"{1} gave {2} adrenaline."
+		"fr"	"{1} a donné à {2} de l'adrénaline."
+		"es"	"{1} le dio a {2} adrenalina."
+		"ru"	"{1} дал {2} адреналин."
+		"zho" 	"{1}给了{2}肾上腺素。"
+	}
+	
+	"GavePills"
+	{
+		"#format" "{1:s),{2:s}"
+		"en"	"{1} gave {2} pain pills."
+		"fr"	"{1} a donné à {2} analgésiques."
+		"es"	"{1} le dio a {2} analgésicos."
+		"ru"	"{1} дал {2} обезболивающие таблетки."
+		"zho" 	"{1}给了{2}服用了止痛药。"
+	}
+}
