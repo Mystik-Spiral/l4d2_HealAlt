@@ -37,10 +37,10 @@ Please let me know if you find any bugs, but before reporting, connect to the de
 Check that the gamemode is "coop" and whether you see "[L4D2] Healing Alternative" or error messages, especially errors related to missing prerequisites.
 <br><br>  
 
-#### Code/Discussion:
+#### Code / Discussion:
 
 [GitHub](https://github.com/Mystik-Spiral/l4d2_HealAlt)  
-[AlliedModders](https://forums.alliedmods.net/showthread.php?t=xxxxxx)
+[AlliedModders](https://forums.alliedmods.net/showthread.php?t=347667)
 <br><br>  
 
 #### Acknowledgements and Thanks:  
