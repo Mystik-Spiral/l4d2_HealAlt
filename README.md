@@ -49,13 +49,19 @@ Check that the gamemode is "coop" and whether you see "[L4D2] Healing Alternativ
 **BHaType**: For help and code examples for custom Actions, and the Actions plugin.  
 **nosoop**: For the Source Scramble plugin.  
 **Spirit_12**: For help with determing navigation flow distance.  
-**BRU7US**: For help with the map_transition event.
+**BRU7US**: For help with the map_transition event.  
+**Blueberryy**: Improved Russian translation.
 <br><br>  
 
 #### Changelog:  
 
-12-May-2024 v1.0
-- Initial release.
+19-May-2024 v1.0.1  
+Minor code fixes.
+- Detect player healing someone else when map transition begins.
+- Improvements to late loading.
+  
+12-May-2024 v1.0  
+Initial release.
 <br><br>  
 
 #### `Prerequisites`:  
@@ -68,7 +74,7 @@ Check that the gamemode is "coop" and whether you see "[L4D2] Healing Alternativ
 #### `Installation`:
 
 **Easiest**:  
-Download the l4d2_HealAlt.zip file, place it in the addons/sourcemod directory, unzip.
+Download the [l4d2_HealAlt.zip](https://forums.alliedmods.net/showthread.php?t=347667) file, place it in the addons/sourcemod directory, unzip.
 
 **Manual**:  
 Extract the l4d2_HealAlt.smx file to the "plugins" directory.  
