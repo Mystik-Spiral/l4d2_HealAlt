@@ -59,6 +59,7 @@ Check that the gamemode is "coop" and whether you see "[L4D2] Healing Alternativ
 Minor code fixes.
 - Detect player healing someone else when map transition begins.
 - Improvements to late loading.
+Improved Russian translation (Спасибо Blueberryy)
   
 12-May-2024 v1.0  
 Initial release.
