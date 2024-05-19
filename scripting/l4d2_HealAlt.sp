@@ -20,14 +20,61 @@ Improve when healing items (first aid kits, pain pills, and adrenaline shots) ar
 
 [B]Options:[/B]
 
-For proper operation, set the following Valve ConVars in your server.cfg file:
+For proper operation, set the following [URL="https://developer.valvesoftware.com/wiki/List_of_L4D2_Cvars"]Valve ConVars[/URL] in your server.cfg file:
 
 [LIST]
-[*][URL="https://developer.valvesoftware.com/wiki/List_of_L4D2_Cvars"]sb_toughness_buffer 0[/URL]
-[*][URL="https://developer.valvesoftware.com/wiki/List_of_L4D2_Cvars"]sb_temp_health_consider_factor 0.0[/URL]
-[*][URL="https://developer.valvesoftware.com/wiki/List_of_L4D2_Cvars"]pain_pills_health_threshold 90[/URL]
+[*]sb_toughness_buffer 0
+[*]sb_temp_health_consider_factor 0.0
+[*]pain_pills_health_threshold 90
 [/LIST]
 
+
+[B]Notes:[/B]  
+
+By default, this plugin will only run in the cooperative (coop) gamemode and is intended to only be used on dedicated servers that have not modified the default values of player health or healing items.
+
+I plan to eventually add handling for first aid kits found outside of safe rooms.
+I will not be adding support for L4D1.
+
+Please let me know if you find any bugs, but before reporting, connect to the dedicated server system console and type:
+
+[I]sm plugins list;sm_cvar mp_gamemode[/I]
+
+Check that the gamemode is "coop" and whether you see "[L4D2] Healing Alternative" or error messages, especially errors related to missing prerequisites.
+
+
+[B]Code / Discussion:[/B]
+
+[URL="https://github.com/Mystik-Spiral/l4d2_HealAlt"]GitHub[/URL]  
+[URL="https://forums.alliedmods.net/showthread.php?t=347667"]AlliedModders[/URL]
+
+
+[B]Acknowledgements and Thanks:[/B]
+
+Silvers: For the original [URL="https://forums.alliedmods.net/showthread.php?t=338889"]Bot Healing Values[/URL] plugin this is forked from, Left4DHooks, gamedata, Allowed Game Modes code, and many code examples.
+BHaType: For help and code examples for custom Actions, and the Actions plugin.
+nosoop: For the Source Scramble plugin.
+Spirit_12: For help with determing navigation flow distance.
+BRU7US: For help with the map_transition event.
+Blueberryy: Improved Russian translation.
+
+
+[SPOILER=Changelog:]
+[CODE]
+19-May-2024 v1.0.1
+[LIST]
+[*]Minor code fixes.
+- Detect player healing someone else when map transition begins.
+- Improvements to late loading.
+[/LIST]
+[/CODE]
+[CODE]
+12-May-2024 v1.0
+[LIST]
+[*]Initial release.
+[/LIST]
+[/CODE]
+[/SPOILER]
 
 [COLOR=Red][B]Prerequisites:[/B][/COLOR]
 
@@ -38,40 +85,7 @@ For proper operation, set the following Valve ConVars in your server.cfg file:
 [/LIST]
 
 
-[B]Notes:[/B]  
-
-By default, this plugin will only run in the cooperative (coop) gamemode and is intended to only be used on dedicated servers that have not modified the default values of player health or healing items.
-
-I plan to eventually add handling for first aid kits found outside of safe rooms.  I will not be adding support for L4D1.
-
-Please let me know if you find any bugs, but before reporting, connect to the dedicated server system console and type:
-
-[I]sm plugins list;sm_cvar mp_gamemode[/I]
-
-Check that the gamemode is "coop" and whether you see "[L4D2] Healing Alternative" or error messages, especially errors related to missing prerequisites.
-
-[URL="https://github.com/Mystik-Spiral/l4d2_HealAlt"]GitHub[/URL]  
-[URL="https://forums.alliedmods.net/showthread.php?t=xxxxxx"]Discussion[/URL]
-
-
-[B]Acknowledgements and Thanks:[/B]
-
-Silvers: For the original [URL="https://forums.alliedmods.net/showthread.php?t=338889"]Bot Healing Values[/URL] plugin this is forked from, Left4DHooks, gamedata, Allowed Game Modes code, and many code examples.
-BHaType: For help and code examples for custom Actions, and the Actions plugin.
-nosoop: For the Source Scramble plugin.
-Spirit_12: For help with determing navigation flow distance.
-BRU7US: For help with the map_transition event.
-
-
-[B]Changelog:[/B]  
-
-[CODE]
-12-May-2024 v1.0
-- Initial release.
-[/CODE]
-
-
-[COLOR=Cornflowerblue][B]Installation:[/B][/COLOR]
+[B]Installation:[/B]
 
 Easiest:
 Download the l4d2_HealAlt.zip file, place it in the addons/sourcemod directory, unzip.
@@ -92,8 +106,8 @@ Extract the l4d2_HealAlt.sp file to the "scripting" directory.
 #define PLUGIN_NAME               "[L4D2] Healing Alternative"
 #define PLUGIN_AUTHOR             "Mystik Spiral"
 #define PLUGIN_DESCRIPTION        "Improve when healing items are used."
-#define PLUGIN_VERSION            "0.2024.05.10"
-#define PLUGIN_URL                "https://forums.alliedmods.net/showthread.php?t=xxxxxx"
+#define PLUGIN_VERSION            "1.0.1"
+#define PLUGIN_URL                "https://forums.alliedmods.net/showthread.php?t=347667"
 
 // ====================================================================================================
 // Plugin Info
@@ -161,6 +175,7 @@ bool g_bChatSpam[MAXPLAYERS + 1];
 bool g_bStartPressingM1[MAXPLAYERS + 1];
 bool g_bStopPressingM1[MAXPLAYERS + 1];
 bool g_bM1pressed[MAXPLAYERS +1];
+bool g_bM2pressed[MAXPLAYERS + 1];
 bool g_bHealingDoorClose[MAXPLAYERS + 1];
 bool g_bMissionLost, g_bMissionWon;
 bool g_bExtensionActions;
@@ -172,6 +187,7 @@ bool g_bFlashHealthComplete;
 
 //Integer
 int g_iSavedHealth[MAXPLAYERS + 1];
+int g_iHealSrcTrg[MAXPLAYERS + 1];
 
 //Float
 float g_fMedkit = MEDKIT_TARGET;
@@ -235,7 +251,7 @@ methodmap SurvivorPillsAdrenHealSelf < BehaviorAction
 public void OnPluginStart()
 {
 	// ====================
-	// en,fr,es,ru,zho
+	// en,es,fr,ru,zho
 	// ====================
 	LoadPluginTranslations();
 	
@@ -305,14 +321,13 @@ public void OnPluginStart()
 	// ====================
 	if (g_bLateLoad)
 	{
-		Event event = CreateEvent("round_start");
-		if (event != null)
+		CreateTimer(30.0, FAKScan);
+		g_bMapStarted = true;
+		IsAllowed();
+		if (g_bCvarAllow)
 		{
-			event.Fire();
+			EnablePatches();
 		}
-		OnMapStart();
-		g_bPatched = false;
-		OnConfigsExecuted();
 	}
 }
 
@@ -413,7 +428,7 @@ public void EnablePatches()
 	StoreToAddress(g_hPatchPills2.Address + view_as<Address>(2), GetAddressOfCell(g_fPills), NumberType_Int32);
 	
 	g_bPatched = true;
-	//PrintToServer("[HealAlt] Enabled Memory Patches");
+	PrintToServer("[HealAlt] Enabled Memory Patches");
 }
 
 /****************************************************************************************************/
@@ -425,7 +440,7 @@ public void DisablePatches()
 	g_hPatchPills2.Disable();
 
 	g_bPatched = false;
-	//PrintToServer("[HealAlt] Disabled Memory Patches");
+	PrintToServer("[HealAlt] Disabled Memory Patches");
 }
 
 /****************************************************************************************************/
@@ -612,42 +627,58 @@ public void MapTransition(Event event, char[] name, bool dontBroadcast)
 		return;
 	}
 
+	//clear array
+	for (int client = 1; client <= MaxClients; client++)
+	{
+		g_bHealingDoorClose[client] = false;
+	}
+	
+	//mark players to skip insta-heal (already healing self or other)
 	for (int client = 1; client <= MaxClients; client++)
 	{
 		if (IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == SURVIVOR_TEAM)
 		{
-			//check if any alive survivors are already healing self (Director inta-heal)
 			int iActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
 			if (IsValidEntity(iActiveWeapon) && iActiveWeapon > 0)
 			{
 				static char sWeaponName[32];
 				GetEntityClassname(iActiveWeapon, sWeaponName, sizeof(sWeaponName));
-				//check if mouse1 button is being pressed while holding medkit (self healing)
-				if (strcmp(sWeaponName, "weapon_first_aid_kit") == 0 && g_bM1pressed[client] == true)
+				if (strcmp(sWeaponName, "weapon_first_aid_kit") == 0)
 				{
-					g_bHealingDoorClose[client] = true;
+					//check if healing self
+					if (g_bM1pressed[client])
+					{
+						//skip client (they will be healed by director)
+						g_bHealingDoorClose[client] = true;
+					}
+					else if (g_bM2pressed[client])
+					{
+						int target = g_iHealSrcTrg[client];  //from L4D2_BackpackItem_StartAction
+						if (target > 0 && target <= MaxClients && IsClientInGame(target) && IsPlayerAlive(target) && GetClientTeam(target) == SURVIVOR_TEAM)
+						{
+							//skip client (they are using their medkit on someone else)
+							g_bHealingDoorClose[client] = true;
+							//skip target (they will be healed by director)
+							g_bHealingDoorClose[target] = true;
+						}
+					}
 				}
-				else
-				{
-					g_bHealingDoorClose[client] = false;
-				}
-			}
+			}				
+		}
+	}
 
-			//check if survivors with medkit should insta-heal self or others
+	//insta-heal loop
+	for (int client = 1; client <= MaxClients; client++)
+	{
+		if (IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == SURVIVOR_TEAM)
+		{
 			int iPermHealth = GetClientHealth(client);
-			if (HasFirstAidKit(client))
+			//check if survivors with medkit should insta-heal self or others
+			if (HasFirstAidKit(client) && !g_bHealingDoorClose[client])
 			{
 				static char sName1[32];
 				GetClientName(client, sName1, sizeof(sName1));
-				//check if Director will insta-heal client
-				//this happens when client is healing with medkit when safe room door is closed
-				if (g_bHealingDoorClose[client] == true)
-				{
-					//skip insta-heal for this client
-					PrintToChatAll("\x04[HealAlt]\x03 %t", "DirectorHeal", sName1);
-					//PrintToServer("[HealAlt] %N will be healed by the Director", client);
-				}
-				else if (iPermHealth < 90)
+				if (iPermHealth < 90)
 				{
 					//survivor with medkit and < 90 health should insta-heal self
 					int iNewClientHealth = iPermHealth + RoundToFloor((100 - iPermHealth) * 0.8);
@@ -660,7 +691,7 @@ public void MapTransition(Event event, char[] name, bool dontBroadcast)
 					StopSound(client, SNDCHAN_STATIC, HEARTBEAT_SOUND);
 					//announce player sName1 healed self
 					PrintToChatAll("\x04[HealAlt]\x03 %t", "HealedSelf", sName1);
-					//PrintToServer("[HealAlt] %N healed self", client);
+					//PrintToServer("[HealAlt] %N healed self.", client);
 				}
 				else
 				{
@@ -728,15 +759,16 @@ public void MapTransition(Event event, char[] name, bool dontBroadcast)
 				}
 			}
 		}
-		g_bHealingDoorClose[client] = false;
 	}
+	
 	//scan clients for minimal heal targets after all insta-heals are complete
 	for (int client = 1; client <= MaxClients; client++)
 	{
 		//find all alive survivors
 		if (IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == SURVIVOR_TEAM)
 		{
-			if (!HasFirstAidKit(client))
+			//does not have a medkit and is not being healed by someone else
+			if (!HasFirstAidKit(client) && !g_bHealingDoorClose[client])
 			{
 				int iPermHealth = GetClientHealth(client);
 				if (iPermHealth < 50)
@@ -835,10 +867,8 @@ public void OnClientDisconnect(int client)
 {
 	if (IsClientInGame(client) && GetClientTeam(client) == SURVIVOR_TEAM && L4D_IsInFirstCheckpoint(client))
 	{
-		//PrintToServer("[HealAlt] %N disconnecting", client);
 		if (g_bFlashHealthComplete)
 		{
-			//PrintToServer("[HealAlt] Will run FlashHealth again");
 			g_bFlashHealthRunning = false;
 			g_bFlashHealthComplete = false;
 			CreateTimer(0.2, FlashHealth);
@@ -855,11 +885,9 @@ public Action FlashHealth(Handle timer)
 	
 	if (g_bFlashHealthRunning || g_bFlashHealthComplete || !g_bCvarAllow || L4D_HasAnySurvivorLeftSafeArea())
 	{
-		//PrintToServer("[HealAlt] FlashHealth status - running/complete: %b/%b", g_bFlashHealthRunning, g_bFlashHealthComplete);
 		return Plugin_Continue;
 	}
 	g_bFlashHealthRunning = true;
-	//PrintToServer("[HealAlt] FlashHealth status - running/complete: %b/%b", g_bFlashHealthRunning, g_bFlashHealthComplete);
 	for (int client = 1; client <= MaxClients; client++)
 	{
 		g_iSavedHealth[client] = 0;
@@ -871,7 +899,6 @@ public Action FlashHealth(Handle timer)
 				{
 					g_iSavedHealth[i] = 0;
 				}
-				//PrintToServer("[HealAlt] FlashHealth aborting for %N.", client);
 				g_bFlashHealthRunning = false;
 				g_bFlashHealthComplete = true;
 				return Plugin_Continue;
@@ -880,7 +907,6 @@ public Action FlashHealth(Handle timer)
 			{
 				//save health
 				g_iSavedHealth[client] = GetClientHealth(client);
-				//PrintToServer("[HealAlt] FlashHealth saved %N: %i", client, g_iSavedHealth[client]);
 				//change health
 				SetEntityHealth(client, 100);
 			}
@@ -892,15 +918,12 @@ public Action FlashHealth(Handle timer)
 /****************************************************************************************************/
 public Action L4D_OnFirstSurvivorLeftSafeArea(int client)
 {
-	//PrintToServer("[HealAlt] Survivor(s) left the safe area...");
 	if (g_bFlashHealthRunning)
 	{
-		//PrintToServer("[HealAlt] ...while FlashHealth is running.");
 		CreateTimer(0.5, ResetFlashHealth);
 	}
 	else
 	{
-		//PrintToServer("[HealAlt] ...while FlashHealth is not running.");
 		g_bFlashHealthComplete = true;
 	}
 	return Plugin_Continue;
@@ -915,7 +938,6 @@ public Action ResetFlashHealth(Handle timer)
 		{
 			//reset bot health
 			SetEntityHealth(client, g_iSavedHealth[client]);
-			//PrintToServer("[HealAlt] ResetFlashHealth restored %N: %i", client, g_iSavedHealth[client]);
 		}
 		g_iSavedHealth[client] = 0;
 	}
@@ -950,7 +972,6 @@ public Action FAKScan(Handle timer)
 				iNumMedkits--;
 				//AcceptEntityInput(iMedkitEnt, "kill");
 				RemoveEntity(iMedkitEnt);
-				//PrintToServer("[HealAlt] Removed medkit %i in ending saferoom", iMedkitEnt);
 			}
 		}
 	}
@@ -979,6 +1000,7 @@ public Action L4D2_BackpackItem_StartAction(int client, int entity, any type)
 			target = 0;
 		}
 	}
+	g_iHealSrcTrg[client] = target;  //checked in map_transition event
 	if (IsClientInGame(client) && !IsFakeClient(client) && GetClientTeam(client) == SURVIVOR_TEAM && client == target && type == L4D2WeaponId_FirstAidKit && GetClientHealth(client) > 89)
 	{
 		bool bNoFAKlt60;
@@ -1067,7 +1089,7 @@ public Action OnSelfActionMedkit(BehaviorAction action, int actor, BehaviorActio
 	//check if bot should take pills/adren instead of using medkit
 	if (!allow && !bFirstCP && HasPillsOrAdrenaline(actor) && (bFinale || flowdist > SAFEROOM_RANGE))
 	{
-		//PrintToServer("[HealAlt] %N will attempt to heal self with pills/adren instead of healing self with medkit.", actor);
+		//PrintToServer("[HealAlt] %N will attempt to use pills/adren instead of healing self with medkit.", actor);
 		//Create action to change to
 		SurvivorPillsAdrenHealSelf take = SurvivorPillsAdrenHealSelf();
 		action.ChangeTo(take, "TakePills_InsteadOf_HealSelf");
@@ -1140,7 +1162,7 @@ public Action OnFriendActionMedkit(BehaviorAction action, int actor, BehaviorAct
 	//check if bot should take pills/adren instead of healing friend with medkit
 	if (!allow && HasPillsOrAdrenaline(actor) && (!HasFirstAidKit(actor) || (HasFirstAidKit && GetEntProp(actor, Prop_Send, "m_bIsOnThirdStrike") != 1)) && iTotalHealthSelf <= PILLS_TARGET && (L4D_IsMissionFinalMap() || flowdist > SAFEROOM_RANGE))
 	{
-		//PrintToServer("[HealAlt] %N will attempt to heal self with pills/adren instead of healing %N with medkit.", actor, target);
+		//PrintToServer("[HealAlt] %N will attempt to use pills/adren instead of healing %N with medkit.", actor, target);
 		//Create action to change to
 		SurvivorPillsAdrenHealSelf take = SurvivorPillsAdrenHealSelf();
 		action.ChangeTo(take, "TakePills_InsteadOf_HealFriend");
@@ -1181,11 +1203,16 @@ public Action OnSelfActionPills(BehaviorAction action, int actor, BehaviorAction
 	
 	if (allow)
 	{
-		//PrintToServer("[HealAlt] %N will attempt to heal self with pills/adren.", actor);
+		//PrintToServer("[HealAlt] %N will attempt to use pills/adren.", actor);
 	}
 	else
 	{
-		//PrintToServer("[HealAlt] %N is too close to ending saferoom and will not take pills/adren.", actor);
+		if (!g_bChatSpam[actor])
+			{
+				g_bChatSpam[actor] = true;
+				g_hChatSpam[actor] = CreateTimer(11.0, ChatSpamTimer, actor);
+				//PrintToServer("[HealAlt] %N is too close to ending saferoom and will not use pills/adren.", actor);
+			}
 	}
 	result.type = allow ? CONTINUE : DONE;
 	return Plugin_Changed;
@@ -1214,7 +1241,7 @@ public Action OnFriendActionPills(BehaviorAction action, int actor, BehaviorActi
 	//check if bot should take pills/adren instead of giving pills/adren to friend
 	if (!allow && iTotalHealthSelf <= PILLS_TARGET && flowdist_actor > SAFEROOM_RANGE && (L4D_IsMissionFinalMap() || strncmp(sMapName, "l4d2_tank", 9) == 0))
 	{
-		//PrintToServer("[HealAlt] %N will attempt to heal self with pills/adren instead of healing %N with pills/adren.", actor, target);
+		//PrintToServer("[HealAlt] %N will attempt to use pills/adren instead of giving pills/adren to %N.", actor, target);
 		//Create action to change to
 		SurvivorPillsAdrenHealSelf take = SurvivorPillsAdrenHealSelf();
 		action.ChangeTo(take, "TakePills_InsteadOf_GivePillsToFriend");
@@ -1223,7 +1250,7 @@ public Action OnFriendActionPills(BehaviorAction action, int actor, BehaviorActi
 	
 	if (allow)
 	{
-		//PrintToServer("[HealAlt] %N will attempt to heal %N with pills/adren.", actor, target);
+		//PrintToServer("[HealAlt] %N will attempt to give pills/adren to %N.", actor, target);
 	}
 	result.type = allow ? CONTINUE : DONE;
 	return Plugin_Changed;
@@ -1336,7 +1363,7 @@ public Action MedkitFSTimer(Handle timer, int client)
 }
 
 // ====================================================================================================
-// Check, start pressing, or stop pressing primary mouse button
+// Check, start pressing, or stop pressing mouse button
 // ====================================================================================================
 public Action OnPlayerRunCmd(int client, int& buttons)
 {
@@ -1347,6 +1374,14 @@ public Action OnPlayerRunCmd(int client, int& buttons)
 	else
 	{
 		g_bM1pressed[client] = false;
+	}
+	if (buttons & IN_ATTACK2)
+	{
+		g_bM2pressed[client] = true;
+	}
+	else
+	{
+		g_bM2pressed[client] = false;
 	}
 	if (g_bStartPressingM1[client])
 	{
