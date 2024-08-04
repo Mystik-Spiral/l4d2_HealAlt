@@ -1,112 +1,10 @@
-/*
-  
-[COLOR=Silver].[/COLOR]
-[B][COLOR=Red]Healing Alternative[/COLOR][/B] (l4d2_HealAlt) by [COLOR=Green][I][B]Mystik Spiral[/B][/I][/COLOR]
-
-Improve when healing items (first aid kits, pain pills, and adrenaline shots) are used.
-
-
-[B]Summary of healing behavioral changes:[/B]
-
-[LIST]
-[*]Bots prefer to use/give pills/adrenaline instead of first aid kits.
-[*]Bots will wait longer to use first aid kits on self or others.
-[*]Bots will never heal another player that has their own healing items.
-[*]Survivors with a first aid kit are healed using the standard algorithm during map changes.
-[*]Survivors without a first aid kit are healed to 50, same as a respawned dead player, during map changes.
-[*]All survivors are given a first aid kit during map changes.
-[/LIST]
-
-
-[B]Options:[/B]
-
-For proper operation, set the following [URL="https://developer.valvesoftware.com/wiki/List_of_L4D2_Cvars"]Valve ConVars[/URL] in your server.cfg file:
-
-[LIST]
-[*]sb_toughness_buffer 0
-[*]sb_temp_health_consider_factor 0.0
-[*]pain_pills_health_threshold 90
-[/LIST]
-
-
-[B]Notes:[/B]  
-
-By default, this plugin will only run in the cooperative (coop) gamemode and is intended to only be used on dedicated servers that have not modified the default values of player health or healing items.
-
-I plan to eventually add handling for first aid kits found outside of safe rooms.
-I will not be adding support for L4D1.
-
-Please let me know if you find any bugs, but before reporting, connect to the dedicated server system console and type:
-
-[I]sm plugins list;sm_cvar mp_gamemode[/I]
-
-Check that the gamemode is "coop" and whether you see "[L4D2] Healing Alternative" or error messages, especially errors related to missing prerequisites.
-
-
-[B]Code / Discussion:[/B]
-
-[URL="https://github.com/Mystik-Spiral/l4d2_HealAlt"]GitHub[/URL]  
-[URL="https://forums.alliedmods.net/showthread.php?t=347667"]AlliedModders[/URL]
-
-
-[B]Acknowledgements and Thanks:[/B]
-
-Silvers: For the original [URL="https://forums.alliedmods.net/showthread.php?t=338889"]Bot Healing Values[/URL] plugin this is forked from, Left4DHooks, gamedata, Allowed Game Modes code, and many code examples.
-BHaType: For help and code examples for custom Actions, and the Actions plugin.
-nosoop: For the Source Scramble plugin.
-Spirit_12: For help with determing navigation flow distance.
-BRU7US: For help with the map_transition event.
-Blueberryy: Improved Russian translation.
-
-
-[SPOILER=Changelog:]
-[CODE]
-19-May-2024 v1.0.1
-[LIST]
-[*]Minor code fixes.
-- Detect player healing someone else when map transition begins.
-- Improvements to late loading.
-[/LIST]
-[/CODE]
-[CODE]
-12-May-2024 v1.0
-[LIST]
-[*]Initial release.
-[/LIST]
-[/CODE]
-[/SPOILER]
-
-[COLOR=Red][B]Prerequisites:[/B][/COLOR]
-
-[LIST]
-[*][URL="https://forums.alliedmods.net/showthread.php?t=336374"]Actions extension by BHaType[/URL]
-[*][URL="https://forums.alliedmods.net/showthread.php?t=317175"]Source Scramble plugin by nosoop[/URL]
-[*][URL="https://forums.alliedmods.net/showthread.php?t=321696"]Left 4 DHooks Direct by Silvers[/URL]
-[/LIST]
-
-
-[B]Installation:[/B]
-
-Easiest:
-Download the l4d2_HealAlt.zip file, place it in the addons/sourcemod directory, unzip.
-
-Manual:
-Extract the l4d2_HealAlt.smx file to the "plugins" directory.
-Extract the l4d2_HealAlt.txt file to the "gamedata" directory.
-Extract the l4d2_HealAlt.phrases.txt file to the "translations" directory.
-Extract the l4d2_HealAlt.sp file to the "scripting" directory.
-
-[COLOR=Silver].[/COLOR]
-
-*/
-
 // ====================================================================================================
 // Defines for Plugin Info
 // ====================================================================================================
 #define PLUGIN_NAME               "[L4D2] Healing Alternative"
 #define PLUGIN_AUTHOR             "Mystik Spiral"
 #define PLUGIN_DESCRIPTION        "Improve when healing items are used."
-#define PLUGIN_VERSION            "1.0.1"
+#define PLUGIN_VERSION            "1.1"
 #define PLUGIN_URL                "https://forums.alliedmods.net/showthread.php?t=347667"
 
 // ====================================================================================================
@@ -129,15 +27,11 @@ public Plugin myinfo =
 #define CVAR_FLAGS                FCVAR_NOTIFY
 #define CVAR_FLAGS_PLUGIN_VERSION FCVAR_NOTIFY|FCVAR_DONTRECORD|FCVAR_SPONLY
 #define HEARTBEAT_SOUND           "player/heartbeatloop.wav"
-#define SOUND_RCV_HEALITEM        "UI/LittleReward.wav"
 #define SURVIVOR_TEAM             2
 #define EMPTY_SLOT                -1
 #define INVALID_ENTITY            -1
-#define LAGNIAPPE                 48.0
 #define PILLS_TARGET              39.0
-#define MEDKIT_TARGET             23.0
-#define SAFEROOM_RANGE            2000.0
-#define MAX_REM_MEDKITS           4
+#define MEDKIT_TARGET             34.0
 
 // ====================================================================================================
 // Includes
@@ -158,42 +52,45 @@ public Plugin myinfo =
 // Global Variables
 // ====================================================================================================
 
-//Allowed Game Modes
+//Allowed Game Modes related
 ConVar	g_hCvarAllow, g_hCvarMPGameMode;
 ConVar	g_hCvarModesOn, g_hCvarModesOff, g_hCvarModesTog;
 bool	g_bCvarAllow, g_bMapStarted;
 int		g_iCurrentMode;
 
-//Handle
-Handle g_hFailSafeMedkit[MAXPLAYERS + 1];
-Handle g_hFailSafePillsAdren[MAXPLAYERS + 1];
-Handle g_hChatSpam[MAXPLAYERS + 1];
+//Required extensions related
+bool g_bExtensionActions;
+bool g_bExtensionScramble;
 
-//Boolean
+//Required ConVar values related
+ConVar g_hCvar_fSTHCF;
+ConVar g_hCvar_iSTB, g_hCvar_iPPHT;
+float g_Save_fSTHCF;
+int g_Save_iSTB, g_Save_iPPHT;
+
+//Plugin late load flag
 bool g_bLateLoad;
-bool g_bChatSpam[MAXPLAYERS + 1];
+
+//ConVar hook related
+ConVar g_hCvar_fRange;
+float g_fRange;
+
+//Mouse button related
 bool g_bStartPressingM1[MAXPLAYERS + 1];
 bool g_bStopPressingM1[MAXPLAYERS + 1];
 bool g_bM1pressed[MAXPLAYERS +1];
 bool g_bM2pressed[MAXPLAYERS + 1];
-bool g_bHealingDoorClose[MAXPLAYERS + 1];
-bool g_bMissionLost, g_bMissionWon;
-bool g_bExtensionActions;
-bool g_bExtensionScramble;
-bool g_bPatched;
-bool g_bRoundStartTwoMinute;
-bool g_bFlashHealthRunning;
-bool g_bFlashHealthComplete;
 
-//Integer
-int g_iSavedHealth[MAXPLAYERS + 1];
-int g_iHealSrcTrg[MAXPLAYERS + 1];
+//Prevent chat spam related
+Handle g_hChatSpam[MAXPLAYERS + 1];
+bool g_bChatSpam[MAXPLAYERS + 1];
 
-//Float
+//Healing targets related
 float g_fMedkit = MEDKIT_TARGET;
 float g_fPills = PILLS_TARGET;
 
-//MemoryPatch
+//MemoryPatch related
+bool g_bPatched;
 MemoryPatch g_hPatchFirst1;
 MemoryPatch g_hPatchFirst2;
 MemoryPatch g_hPatchPills1;
@@ -260,18 +157,19 @@ public void OnPluginStart()
 	// ====================
 	CreateConVar("HealAlt_version", PLUGIN_VERSION, PLUGIN_DESCRIPTION, CVAR_FLAGS_PLUGIN_VERSION);
 
-	//Allowed Game Modes ConVars
+	//Allowed Game Modes
 	g_hCvarMPGameMode = FindConVar("mp_gamemode");
 	g_hCvarAllow = CreateConVar("HealAlt_enabled", "1", "0=Plugin off, 1=Plugin on.", CVAR_FLAGS );
 	g_hCvarModesOn = CreateConVar("HealAlt_modes_on", "", "Game mode names on, comma separated, no spaces. (Empty=all).", CVAR_FLAGS );
 	g_hCvarModesOff = CreateConVar("HealAlt_modes_off", "", "Game mode names off, comma separated, no spaces. (Empty=none).", CVAR_FLAGS );
 	g_hCvarModesTog = CreateConVar("HealAlt_modes_tog", "1", "Game type bitflags on, add #s together. 0=All, 1=Coop, 2=Survival, 4=Versus, 8=Scavenge", CVAR_FLAGS );
 
-	//Default plugin ConVars
-	//g_hCvarStuff1 = CreateConVar("HealAlt_stuff1", "", "Stuff1", CVAR_FLAGS );
-	//g_hCvarStuff2 = CreateConVar("HealAlt_stuff2", "", "Stuff2", CVAR_FLAGS );
-	//g_hCvarStuff3 = CreateConVar("HealAlt_stuff3", "", "Stuff3", CVAR_FLAGS );
-
+	//Other ConVars
+	g_hCvar_fRange = FindConVar("player_use_radius");
+	g_hCvar_fSTHCF = FindConVar("sb_temp_health_consider_factor");
+	g_hCvar_iSTB = FindConVar("sb_toughness_buffer");
+	g_hCvar_iPPHT = FindConVar("pain_pills_health_threshold");
+	
 	//Load ConVars from cfg file
 	AutoExecConfig(true, "l4d2_HealAlt");
 	
@@ -285,24 +183,26 @@ public void OnPluginStart()
 	g_hCvarModesOn.AddChangeHook(ConVarChanged_Allow);
 	g_hCvarModesOff.AddChangeHook(ConVarChanged_Allow);
 	g_hCvarModesTog.AddChangeHook(ConVarChanged_Allow);
-
-	//Additional ConVar hooks
-	//g_hCvarStuff1.AddChangeHook(ConVarChanged_Cvars);
-	//g_hCvarStuff2.AddChangeHook(ConVarChanged_Cvars);
-	//g_hCvarStuff3.AddChangeHook(ConVarChanged_Cvars);
+	
+	//Other ConVar hooks
+	g_hCvar_fRange.AddChangeHook(ConVarChanged_Cvars);
 	
 	// ====================
 	// Hook events
 	// ====================
-	HookEvent("map_transition", MapTransition, EventHookMode_PostNoCopy);	//round succeeded
-	HookEvent("mission_lost", MissionLost, EventHookMode_PostNoCopy);		//round failed
-	HookEvent("round_start", RoundStart, EventHookMode_PostNoCopy);			//round start
+	HookEvent("heal_success", HealSuccess, EventHookMode_Post);
+	HookEvent("pills_used", PillsUsed, EventHookMode_Post);
+	HookEvent("adrenaline_used", AdrenalineUsed, EventHookMode_Post);
+	HookEvent("weapon_given", WeaponGiven, EventHookMode_Post);
+	HookEvent("door_close", DoorClose, EventHookMode_Pre);
+	HookEvent("round_start", RoundStart, EventHookMode_PostNoCopy);
 	
 	// ====================
 	// Validate extensions
 	// ====================
 	g_bExtensionActions = LibraryExists("actionslib");
 	g_bExtensionScramble = GetFeatureStatus(FeatureType_Native, "MemoryPatch.CreateFromConf") == FeatureStatus_Available;
+	
 	if (!g_bExtensionActions && !g_bExtensionScramble)
 	{
 		SetFailState("\n==========\nMissing required extensions: \"Actions\" and \"SourceScramble\".\n==========");
@@ -321,11 +221,11 @@ public void OnPluginStart()
 	// ====================
 	if (g_bLateLoad)
 	{
-		CreateTimer(30.0, FAKScan);
 		g_bMapStarted = true;
 		IsAllowed();
 		if (g_bCvarAllow)
 		{
+			GetCvars();
 			EnablePatches();
 		}
 	}
@@ -341,13 +241,19 @@ public void OnPluginEnd()
 public void OnConfigsExecuted()
 {
 	IsAllowed();
-	if (!g_bPatched && g_bCvarAllow)
+	if (g_bCvarAllow)
 	{
-		EnablePatches();
+		if (!g_bPatched)
+		{
+			EnablePatches();
+		}
 	}
-	else if (!g_bCvarAllow && g_bPatched)
+	else
 	{
-		DisablePatches();
+		if (g_bPatched)
+		{
+			DisablePatches();
+		}
 	}
 }
 
@@ -372,6 +278,7 @@ public void EnablePatches()
 	// ====================
 	// Validate patches
 	// ====================
+	// First Aid
 	g_hPatchFirst1 = MemoryPatch.CreateFromConf(hGameData, "BotHealing_FirstAid_A");
 	if (!g_hPatchFirst1.Validate())
 	{
@@ -382,6 +289,7 @@ public void EnablePatches()
 	{
 		SetFailState("Failed to validate \"BotHealing_FirstAid_B\" target.");
 	}
+	// Pills
 	g_hPatchPills1 = MemoryPatch.CreateFromConf(hGameData, "BotHealing_Pills_A");
 	if (!g_hPatchPills1.Validate())
 	{
@@ -418,7 +326,6 @@ public void EnablePatches()
 	// ====================
 	// Patch memory
 	// ====================
-	
 	// First Aid
 	StoreToAddress(g_hPatchFirst1.Address + view_as<Address>(2), GetAddressOfCell(g_fMedkit), NumberType_Int32);
 	StoreToAddress(g_hPatchFirst2.Address + view_as<Address>(2), GetAddressOfCell(g_fMedkit), NumberType_Int32);
@@ -428,7 +335,15 @@ public void EnablePatches()
 	StoreToAddress(g_hPatchPills2.Address + view_as<Address>(2), GetAddressOfCell(g_fPills), NumberType_Int32);
 	
 	g_bPatched = true;
-	PrintToServer("[HealAlt] Enabled Memory Patches");
+
+	// ====================
+	// Hook ConVars
+	// ====================
+	g_hCvar_fSTHCF.AddChangeHook(ConVarChanged_Cvars);
+	g_hCvar_iSTB.AddChangeHook(ConVarChanged_Cvars);
+	g_hCvar_iPPHT.AddChangeHook(ConVarChanged_Cvars);
+	
+	PrintToServer("[HealAlt] Enabled memory patches and ConVar changes");
 }
 
 /****************************************************************************************************/
@@ -440,7 +355,22 @@ public void DisablePatches()
 	g_hPatchPills2.Disable();
 
 	g_bPatched = false;
-	PrintToServer("[HealAlt] Disabled Memory Patches");
+
+	// ====================
+	// Unhook ConVars
+	// ====================
+	g_hCvar_fSTHCF.RemoveChangeHook(ConVarChanged_Cvars);
+	g_hCvar_iSTB.RemoveChangeHook(ConVarChanged_Cvars);
+	g_hCvar_iPPHT.RemoveChangeHook(ConVarChanged_Cvars);
+	
+	// ====================
+	// Restore ConVars
+	// ====================
+	g_hCvar_fSTHCF.SetFloat(g_Save_fSTHCF);
+	g_hCvar_iSTB.SetInt(g_Save_iSTB);
+	g_hCvar_iPPHT.SetInt(g_Save_iPPHT);
+	
+	PrintToServer("[HealAlt] Disabled memory patches and ConVar changes");
 }
 
 /****************************************************************************************************/
@@ -459,6 +389,17 @@ public void LoadPluginTranslations()
 }
 
 /****************************************************************************************************/
+public void RoundStart(Event event, char[] name, bool dontBroadcast)
+{
+	//safety clear to prevent stuck M1 key
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		g_bStartPressingM1[i] = false;
+		g_bStopPressingM1[i] = true;
+	}
+}
+
+/****************************************************************************************************/
 public void OnMapStart()
 {
 	g_bMapStarted = true;
@@ -468,39 +409,6 @@ public void OnMapStart()
 public void OnMapEnd()
 {
 	g_bMapStarted = false;
-}
-
-/****************************************************************************************************/
-public void RoundStart(Event event, char[] name, bool dontBroadcast)
-{
-	CreateTimer(30.0, FAKScan);
-	CreateTimer(60.0, FlashHealth);
-	CreateTimer(120.0, RoundStartTwoMinuteTimer);
-	g_bRoundStartTwoMinute = true;
-	g_bFlashHealthRunning = false;
-	g_bFlashHealthComplete = false;
-	
-	if (g_bMissionWon)
-	{
-		g_bMissionWon = false;
-	}
-	
-	if (g_bMissionLost)
-	{
-		g_bMissionLost = false;
-		if (!L4D_IsFirstMapInScenario())
-		{
-			//on map failure, if not first map, check/give medkit to all survivors
-			CreateTimer(1.0, CheckGiveMedkit, -1);
-		}
-	}
-}
-
-/****************************************************************************************************/
-public Action RoundStartTwoMinuteTimer(Handle timer)
-{
-	g_bRoundStartTwoMinute = false;
-	return Plugin_Continue;
 }
 
 /****************************************************************************************************/
@@ -526,9 +434,27 @@ public void ConVarChanged_Cvars(ConVar convar, const char[] oldValue, const char
 /****************************************************************************************************/
 void GetCvars()
 {
-	//g_iCvarStuff1 = g_hCvarStuff1.IntValue;
-	//g_fCvarStuff2 = g_hCvarStuff2.FloatValue;
-	//g_bCvarStuff3 = g_hCvarStuff3.BoolValue;
+	//player_use_radius
+	g_fRange = g_hCvar_fRange.FloatValue;
+
+	//sb_temp_health_consider_factor
+	if (g_hCvar_fSTHCF.FloatValue != 1.0)
+	{
+		g_Save_fSTHCF = g_hCvar_fSTHCF.FloatValue;
+		g_hCvar_fSTHCF.SetFloat(1.0);
+	}
+	//sb_toughness_buffer
+	if (g_hCvar_iSTB.IntValue != 0)
+	{
+		g_Save_iSTB = g_hCvar_iSTB.IntValue;
+		g_hCvar_iSTB.SetInt(0);
+	}
+	//pain_pills_health_threshold
+	if (g_hCvar_iPPHT.IntValue != 90)
+	{
+		g_Save_iPPHT = g_hCvar_iPPHT.IntValue;
+		g_hCvar_iPPHT.SetInt(90);
+	}
 }
 
 /****************************************************************************************************/
@@ -610,375 +536,6 @@ public void OnGamemode(const char[] output, int caller, int activator, float del
 }
 
 /****************************************************************************************************/
-public void MissionLost(Event event, char[] name, bool dontBroadcast)
-{
-	g_bMissionLost = true;
-}
-
-/****************************************************************************************************/
-public void MapTransition(Event event, char[] name, bool dontBroadcast)
-{
-	g_bMissionWon = true;
-	//skip InstaHeal for Tank Challenge and Tanks Playground campaigns
-	static char sMapName[64];
-	GetCurrentMap(sMapName, sizeof(sMapName));
-	if (!g_bCvarAllow || strncmp(sMapName, "l4d2_tank", 9) == 0)
-	{
-		return;
-	}
-
-	//clear array
-	for (int client = 1; client <= MaxClients; client++)
-	{
-		g_bHealingDoorClose[client] = false;
-	}
-	
-	//mark players to skip insta-heal (already healing self or other)
-	for (int client = 1; client <= MaxClients; client++)
-	{
-		if (IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == SURVIVOR_TEAM)
-		{
-			int iActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
-			if (IsValidEntity(iActiveWeapon) && iActiveWeapon > 0)
-			{
-				static char sWeaponName[32];
-				GetEntityClassname(iActiveWeapon, sWeaponName, sizeof(sWeaponName));
-				if (strcmp(sWeaponName, "weapon_first_aid_kit") == 0)
-				{
-					//check if healing self
-					if (g_bM1pressed[client])
-					{
-						//skip client (they will be healed by director)
-						g_bHealingDoorClose[client] = true;
-					}
-					else if (g_bM2pressed[client])
-					{
-						int target = g_iHealSrcTrg[client];  //from L4D2_BackpackItem_StartAction
-						if (target > 0 && target <= MaxClients && IsClientInGame(target) && IsPlayerAlive(target) && GetClientTeam(target) == SURVIVOR_TEAM)
-						{
-							//skip client (they are using their medkit on someone else)
-							g_bHealingDoorClose[client] = true;
-							//skip target (they will be healed by director)
-							g_bHealingDoorClose[target] = true;
-						}
-					}
-				}
-			}				
-		}
-	}
-
-	//insta-heal loop
-	for (int client = 1; client <= MaxClients; client++)
-	{
-		if (IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == SURVIVOR_TEAM)
-		{
-			int iPermHealth = GetClientHealth(client);
-			//check if survivors with medkit should insta-heal self or others
-			if (HasFirstAidKit(client) && !g_bHealingDoorClose[client])
-			{
-				static char sName1[32];
-				GetClientName(client, sName1, sizeof(sName1));
-				if (iPermHealth < 90)
-				{
-					//survivor with medkit and < 90 health should insta-heal self
-					int iNewClientHealth = iPermHealth + RoundToFloor((100 - iPermHealth) * 0.8);
-					SetEntityHealth(client, iNewClientHealth);
-					L4D_SetTempHealth(client, 0.0);
-					SetEntProp(client, Prop_Send, "m_currentReviveCount", 0);
-					SetEntProp(client, Prop_Send, "m_bIsOnThirdStrike", 0);
-					SetEntProp(client, Prop_Send, "m_isGoingToDie", 0);
-					StopSound(client, SNDCHAN_AUTO, HEARTBEAT_SOUND);
-					StopSound(client, SNDCHAN_STATIC, HEARTBEAT_SOUND);
-					//announce player sName1 healed self
-					PrintToChatAll("\x04[HealAlt]\x03 %t", "HealedSelf", sName1);
-					//PrintToServer("[HealAlt] %N healed self.", client);
-				}
-				else
-				{
-					//client has medkit and > 89 health so...
-					//scan all players without medkit to get insta-heal target
-					int iLowestHealth = 101;
-					int iLowestHealthClient;
-					int iClntHlth;
-					for (int i = 1; i <= MaxClients; i++)
-					{
-						if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == SURVIVOR_TEAM && GetClientHealth(i) < iLowestHealth && !HasFirstAidKit(i))
-						{
-							iClntHlth = GetClientHealth(i);
-							if (iClntHlth < iLowestHealth)
-							{
-								iLowestHealth = iClntHlth;
-								iLowestHealthClient = i;
-							}
-						}
-					}
-					//if no targets found, scan again including players with medkit
-					if (iLowestHealthClient == 0)
-					{
-						for (int i = 1; i <= MaxClients; i++)
-						{
-							if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == SURVIVOR_TEAM && i != client && GetClientHealth(i) < iPermHealth)
-							{
-								iClntHlth = GetClientHealth(i);
-								if (iClntHlth < iLowestHealth)
-								{
-									iLowestHealth = iClntHlth;
-									iLowestHealthClient = i;
-								}
-							}
-						}
-					}
-					//if still no targets found, heal self
-					if (iLowestHealthClient == 0)
-					{
-						iLowestHealthClient = client;
-					}
-					//heal iLowestHealthClient
-					static char sName2[32];
-					GetClientName(iLowestHealthClient, sName2, sizeof(sName2));
-					int iNewClientHealth = iLowestHealth + RoundToFloor((100 - iLowestHealth) * 0.8);
-					SetEntityHealth(iLowestHealthClient, iNewClientHealth);
-					L4D_SetTempHealth(iLowestHealthClient, 0.0);
-					SetEntProp(iLowestHealthClient, Prop_Send, "m_currentReviveCount", 0);
-					SetEntProp(iLowestHealthClient, Prop_Send, "m_bIsOnThirdStrike", 0);
-					SetEntProp(iLowestHealthClient, Prop_Send, "m_isGoingToDie", 0);
-					StopSound(iLowestHealthClient, SNDCHAN_AUTO, HEARTBEAT_SOUND);
-					StopSound(iLowestHealthClient, SNDCHAN_STATIC, HEARTBEAT_SOUND);
-					if (iLowestHealthClient != client)
-					{
-						//announce player sName1 healed player sName2
-						PrintToChatAll("\x04[HealAlt]\x03 %t", "HealedFriend", sName1, sName2);
-						//PrintToServer("[HealAlt] %N healed %N.", client, iLowestHealthClient);
-					}
-					else
-					{
-						//announce player sName1 healed self
-						PrintToChatAll("\x04[HealAlt]\x03 %t", "HealedSelf", sName1);
-						//PrintToServer("[HealAlt] %N healed self.", client);
-					}
-				}
-			}
-		}
-	}
-	
-	//scan clients for minimal heal targets after all insta-heals are complete
-	for (int client = 1; client <= MaxClients; client++)
-	{
-		//find all alive survivors
-		if (IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == SURVIVOR_TEAM)
-		{
-			//does not have a medkit and is not being healed by someone else
-			if (!HasFirstAidKit(client) && !g_bHealingDoorClose[client])
-			{
-				int iPermHealth = GetClientHealth(client);
-				if (iPermHealth < 50)
-				{
-					//minimal heal (same as a dead player that respawns in safe room)
-					SetEntityHealth(client, 50);
-					L4D_SetTempHealth(client, 0.0);
-					SetEntProp(client, Prop_Send, "m_currentReviveCount", 0);
-					SetEntProp(client, Prop_Send, "m_bIsOnThirdStrike", 0);
-					SetEntProp(client, Prop_Send, "m_isGoingToDie", 0);
-					StopSound(client, SNDCHAN_AUTO, HEARTBEAT_SOUND);
-					StopSound(client, SNDCHAN_STATIC, HEARTBEAT_SOUND);
-					//PrintToServer("[HealAlt] %N received minimal heal.", client);
-				}
-			}
-		}
-	}		
-	return;
-}
-
-/****************************************************************************************************/
-public void OnClientPostAdminCheck(int client)
-{
-	if (!L4D_IsFirstMapInScenario())
-	{
-		//need a few more frames to ensure client is in game and assigned a team
-		CreateTimer(1.0, CheckGiveMedkit, client);
-	}
-}
-
-/****************************************************************************************************/
-public Action CheckGiveMedkit(Handle timer, int client)
-{
-	static char sMapName[64];
-	GetCurrentMap(sMapName, sizeof(sMapName));
-	if (!g_bCvarAllow || strncmp(sMapName, "l4d2_tank", 9) == 0)
-	{
-		return Plugin_Continue;
-	}
-	//called from RoundStart/g_bMissionLost
-	if (client == -1)
-	{
-		for (int i = 1; i <= MaxClients; i++)
-		{
-			if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == SURVIVOR_TEAM)
-			{
-				if (!HasFirstAidKit(i))
-				{
-					//drop existing weapon in slot 3 before giving medkit
-					int iEntFDU = GetPlayerWeaponSlot(i, 3);
-					if (IsValidEntity(iEntFDU) && iEntFDU > 0)
-					{
-						SDKHooks_DropWeapon(i, iEntFDU);
-					}
-					//give survivor a medkit
-					GivePlayerItem(i, "weapon_first_aid_kit");
-				}
-				static char sName1[32];
-				GetClientName(i, sName1, sizeof(sName1));
-				//announce player sName1 took a medkit
-				PrintToChatAll("\x04[HealAlt]\x03 %t", "TookFAK", sName1);
-				//PrintToServer("[HealAlt] %N took a first aid kit.", i);
-			}
-		}
-	}
-	//called from OnClientPostAdminCheck
-	else
-	{
-		//in the first two minutes since round start, check if survivor is alive without a medkit
-		if (g_bRoundStartTwoMinute && IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == SURVIVOR_TEAM)
-		{
-			if (!HasFirstAidKit(client))
-			{
-				//drop existing weapon in slot 3 before giving medkit
-				int iEntFDU = GetPlayerWeaponSlot(client, 3);
-				if (IsValidEntity(iEntFDU) && iEntFDU > 0)
-				{
-					SDKHooks_DropWeapon(client, iEntFDU);
-				}	
-				//give survivor a medkit
-				GivePlayerItem(client, "weapon_first_aid_kit");
-			}
-			static char sName1[32];
-			GetClientName(client, sName1, sizeof(sName1));
-			//announce player sName1 took a medkit
-			PrintToChatAll("\x04[HealAlt]\x03 %t", "TookFAK", sName1);
-			//PrintToServer("[HealAlt] %N took a first aid kit.", client);
-		}
-	}
-	
-	return Plugin_Continue;
-}
-
-/****************************************************************************************************/
-public void OnClientDisconnect(int client)
-{
-	if (IsClientInGame(client) && GetClientTeam(client) == SURVIVOR_TEAM && L4D_IsInFirstCheckpoint(client))
-	{
-		if (g_bFlashHealthComplete)
-		{
-			g_bFlashHealthRunning = false;
-			g_bFlashHealthComplete = false;
-			CreateTimer(0.2, FlashHealth);
-		}
-	}
-}
-
-/****************************************************************************************************/
-public Action FlashHealth(Handle timer)
-{
-	//Hack for all bot survivor team stuck in the starting safe room when one or more survivors want
-	//to heal before leaving the safe room and are blocked.  This will temporarily set the bots
-	//health to max until they leave the safe room, then reset their health to the correct values.
-	
-	if (g_bFlashHealthRunning || g_bFlashHealthComplete || !g_bCvarAllow || L4D_HasAnySurvivorLeftSafeArea())
-	{
-		return Plugin_Continue;
-	}
-	g_bFlashHealthRunning = true;
-	for (int client = 1; client <= MaxClients; client++)
-	{
-		g_iSavedHealth[client] = 0;
-		if (IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == SURVIVOR_TEAM)
-		{
-			if (!IsFakeClient(client) || !L4D_IsInFirstCheckpoint(client))
-			{
-				for (int i = 1; i <= client; i++)
-				{
-					g_iSavedHealth[i] = 0;
-				}
-				g_bFlashHealthRunning = false;
-				g_bFlashHealthComplete = true;
-				return Plugin_Continue;
-			}
-			else
-			{
-				//save health
-				g_iSavedHealth[client] = GetClientHealth(client);
-				//change health
-				SetEntityHealth(client, 100);
-			}
-		}
-	}
-	return Plugin_Continue;
-}
-
-/****************************************************************************************************/
-public Action L4D_OnFirstSurvivorLeftSafeArea(int client)
-{
-	if (g_bFlashHealthRunning)
-	{
-		CreateTimer(0.5, ResetFlashHealth);
-	}
-	else
-	{
-		g_bFlashHealthComplete = true;
-	}
-	return Plugin_Continue;
-}
-
-/****************************************************************************************************/
-public Action ResetFlashHealth(Handle timer)
-{
-	for (int client = 1; client <= MaxClients; client++)
-	{
-		if (g_iSavedHealth[client] > 0 && IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == SURVIVOR_TEAM)
-		{
-			//reset bot health
-			SetEntityHealth(client, g_iSavedHealth[client]);
-		}
-		g_iSavedHealth[client] = 0;
-	}
-	g_bFlashHealthRunning = false;
-	g_bFlashHealthComplete = true;
-	return Plugin_Continue;
-}
-
-/****************************************************************************************************/
-public Action FAKScan(Handle timer)
-{
-	static char sMapName[64];
-	GetCurrentMap(sMapName, sizeof(sMapName));
-	if (!g_bCvarAllow || L4D_IsMissionFinalMap() || strncmp(sMapName, "l4d2_tank", 9) == 0)
-	{
-		return Plugin_Continue;
-	}
-	int iNumMedkits = MAX_REM_MEDKITS;
-	float fMedkitPos[3];
-	int iMedkitEnt = INVALID_ENT_REFERENCE;
-	//find all medkits
-	while ((iMedkitEnt = FindEntityByClassname(iMedkitEnt, "weapon_first_aid_kit_spawn")) != INVALID_ENT_REFERENCE)
-	{
-		//get vector position of found medkit
-		GetEntPropVector(iMedkitEnt, Prop_Send, "m_vecOrigin", fMedkitPos);
-		fMedkitPos[2]+=5.0;	//workaround for LOS to nav area, especially C4M1
-		if (L4D_IsPositionInLastCheckpoint(fMedkitPos))
-		{
-			//remove up to MAX_REM_MEDKITS medkits in ending saferoom
-			if (iNumMedkits > 0 && IsValidEntity(iMedkitEnt) && iMedkitEnt > 0)
-			{
-				iNumMedkits--;
-				//AcceptEntityInput(iMedkitEnt, "kill");
-				RemoveEntity(iMedkitEnt);
-			}
-		}
-	}
-	return Plugin_Continue;
-}
-
-/****************************************************************************************************/
 public Action L4D2_BackpackItem_StartAction(int client, int entity, any type)
 {
 	if (!g_bCvarAllow)
@@ -992,15 +549,13 @@ public Action L4D2_BackpackItem_StartAction(int client, int entity, any type)
 	}
 	else
 	{
-		float range = FindConVar("player_use_radius").FloatValue;
 		bool players = true;
-		target = L4D_FindUseEntity(client, players, range);
+		target = L4D_FindUseEntity(client, players, g_fRange);
 		if (target < 0 || target > MaxClients)
 		{
 			target = 0;
 		}
 	}
-	g_iHealSrcTrg[client] = target;  //checked in map_transition event
 	if (IsClientInGame(client) && !IsFakeClient(client) && GetClientTeam(client) == SURVIVOR_TEAM && client == target && type == L4D2WeaponId_FirstAidKit && GetClientHealth(client) > 89)
 	{
 		bool bNoFAKlt60;
@@ -1009,7 +564,7 @@ public Action L4D2_BackpackItem_StartAction(int client, int entity, any type)
 		int iClntHlth;
 		for (int i = 1; i <= MaxClients; i++)
 		{
-			if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == SURVIVOR_TEAM && GetClientHealth(i) < iLowestHealth && !HasFirstAidKit(i))
+			if (IsInGameAliveSurvivor(i) && GetClientHealth(i) < iLowestHealth && !HasFirstAidKit(i))
 			{
 				iClntHlth = GetClientHealth(i);
 				bNoFAKlt60 = true;
@@ -1039,6 +594,157 @@ public Action L4D2_BackpackItem_StartAction(int client, int entity, any type)
 		}
 	}
 	return Plugin_Continue;
+}
+
+/****************************************************************************************************/
+public void HealSuccess(Event event, char[] name, bool dontBroadcast)
+{
+	if (!g_bCvarAllow)
+	{
+		return;
+	}
+	float fTime = GetGameTime();
+	int iHealer = GetClientOfUserId(GetEventInt(event,"userid"));
+	int iHealee = GetClientOfUserId(GetEventInt(event,"subject"));
+	if ((iHealer > 0 && iHealer <= MaxClients) && (iHealee > 0 && iHealee <= MaxClients) && IsFakeClient(iHealer))
+	{
+		if (iHealer != iHealee)
+		{
+			PrintToServer("[HealAlt] %f: %N healed %N", fTime, iHealer, iHealee);
+		}
+		else
+		{
+			PrintToServer("[HealAlt] %f: %N healed self", fTime, iHealer);
+		}
+		g_bStartPressingM1[iHealer] = false;
+		g_bStopPressingM1[iHealer] = true;
+	}
+}
+
+/****************************************************************************************************/
+public void PillsUsed(Event event, char[] name, bool dontBroadcast)
+{
+	if (!g_bCvarAllow)
+	{
+		return;
+	}
+	float fTime = GetGameTime();
+	int iHealer = GetClientOfUserId(GetEventInt(event,"subject"));
+	if (iHealer > 0 && iHealer <= MaxClients && IsFakeClient(iHealer))
+	{
+		PrintToServer("[HealAlt] %f: %N swallowed pills", fTime, iHealer);
+		g_bStartPressingM1[iHealer] = false;
+		g_bStopPressingM1[iHealer] = true;
+	}
+}
+
+/****************************************************************************************************/
+public void AdrenalineUsed(Event event, char[] name, bool dontBroadcast)
+{
+	if (!g_bCvarAllow)
+	{
+		return;
+	}
+	float fTime = GetGameTime();
+	int iHealer = GetClientOfUserId(GetEventInt(event,"userid"));
+	if (iHealer > 0 && iHealer <= MaxClients && IsFakeClient(iHealer))
+	{
+		PrintToServer("[HealAlt] %f: %N injected adrenaline", fTime, iHealer);
+		g_bStartPressingM1[iHealer] = false;
+		g_bStopPressingM1[iHealer] = true;
+	}
+}
+
+/****************************************************************************************************/
+public void WeaponGiven(Event event, char[] name, bool dontBroadcast)
+{
+	if (!g_bCvarAllow)
+	{
+		return;
+	}
+	float fTime = GetGameTime();
+	int iWeapId = GetEventInt(event, "weapon");
+	int iRcvr = GetClientOfUserId(GetEventInt(event,"userid"));
+	int iGvr = GetClientOfUserId(GetEventInt(event,"giver"));
+	if (iGvr > 0 && iGvr <= MaxClients && iRcvr > 0 && iRcvr <= MaxClients && IsFakeClient(iGvr))
+	{
+		if (iWeapId == 15)		//pain_pills
+		{
+			PrintToServer("[HealAlt] %f: %N gave pills to %N", fTime, iGvr, iRcvr);
+		}
+		else if (iWeapId == 23)	//adrenaline
+		{
+			PrintToServer("[HealAlt] %f: %N gave adrenaline to %N", fTime, iGvr, iRcvr);
+		}
+	}
+}
+
+/****************************************************************************************************/
+public void DoorClose(Event event, char[] name, bool dontBroadcast)
+{
+	if (!g_bCvarAllow)
+	{
+		return;
+	}
+	bool bCPdoor = (GetEventBool(event, "checkpoint"));
+	if (bCPdoor)
+	{
+		bool bWillTriggerMT = true;
+		//check if any alive survivor is outside the ending safe area
+		for (int i = 1; i <= MaxClients; i++)
+		{
+			if (IsInGameAliveSurvivor(i))
+			{
+				if (!L4D_IsInLastCheckpoint(i))
+				{
+					bWillTriggerMT = false;
+					break;
+				}
+			}
+		}
+		if (bWillTriggerMT)
+		{
+			//map_transition is about to be triggered
+			for (int i = 1; i <= MaxClients; i++)
+			{
+				if (IsInGameAliveSurvivor(i))
+				{
+					int iHealth = GetClientHealth(i);
+					if (IsFakeClient(i) && HasFirstAidKit(i))
+					{
+						if (iHealth < 80)
+						{
+							//survivor bot with medkit and < 80 health should heal
+							SetEntityHealth(i, iHealth + RoundToFloor((100 - iHealth) * 0.8));
+							L4D_SetTempHealth(i, 0.0);
+							SetEntProp(i, Prop_Send, "m_currentReviveCount", 0);
+							SetEntProp(i, Prop_Send, "m_bIsOnThirdStrike", 0);
+							SetEntProp(i, Prop_Send, "m_isGoingToDie", 0);
+							StopSound(i, SNDCHAN_AUTO, HEARTBEAT_SOUND);
+							StopSound(i, SNDCHAN_STATIC, HEARTBEAT_SOUND);
+							PrintToServer("[HealAlt] %f: %N healed self", GetGameTime(), i);
+							RemoveEntity(GetPlayerWeaponSlot(i, 3));
+						}
+					}
+					else
+					{
+						if (iHealth < 40 && !HasFirstAidKit(i))
+						{
+							//any survivor without a medkit and < 40 health gets a minimal heal
+							SetEntityHealth(i, 40);
+							L4D_SetTempHealth(i, 0.0);
+							SetEntProp(i, Prop_Send, "m_currentReviveCount", 0);
+							SetEntProp(i, Prop_Send, "m_bIsOnThirdStrike", 0);
+							SetEntProp(i, Prop_Send, "m_isGoingToDie", 0);
+							StopSound(i, SNDCHAN_AUTO, HEARTBEAT_SOUND);
+							StopSound(i, SNDCHAN_STATIC, HEARTBEAT_SOUND);
+							PrintToServer("[HealAlt] %f: %N received minimal heal", GetGameTime(), i);
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 // ====================================================================================================
@@ -1074,40 +780,30 @@ public void OnActionCreated(BehaviorAction action, int actor, const char[] name)
 /****************************************************************************************************/
 public Action OnSelfActionMedkit(BehaviorAction action, int actor, BehaviorAction priorAction, ActionResult result)
 {
-	int iPermHealth = GetClientHealth(actor);
-	int iTempHealth = L4D_GetPlayerTempHealth(actor);
-	int iTotalHealth = iPermHealth + iTempHealth;
 	bool bBW = GetEntProp(actor, Prop_Send, "m_bIsOnThirdStrike") == 1;
-	bool bFinale = L4D_IsMissionFinalMap();
-	bool bFirstCP = L4D_IsInFirstCheckpoint(actor);
-	bool bLastCP = L4D_IsInLastCheckpoint(actor);
-	float flowdist = L4D2Direct_GetMapMaxFlowDistance() - L4D2Direct_GetFlowDistance(actor);
-	
-	//allow bot to heal with medkit if B&W (third strike) or in last map
-	bool allow = bBW || bFinale;
-
-	//check if bot should take pills/adren instead of using medkit
-	if (!allow && !bFirstCP && HasPillsOrAdrenaline(actor) && (bFinale || flowdist > SAFEROOM_RANGE))
+	bool bInChkPt = L4D_IsInFirstCheckpoint(actor) || L4D_IsInLastCheckpoint(actor);
+	float fTime = GetGameTime();
+	//chance to skip action redirect
+	bool bChance = false;
+	if (L4D_IsMissionFinalMap())
 	{
-		//PrintToServer("[HealAlt] %N will attempt to use pills/adren instead of healing self with medkit.", actor);
-		//Create action to change to
+		bChance = GetRandomInt(1, 10) > 1;	//90%
+	}
+	else
+	{
+		bChance = GetRandomInt(1, 10) > 9;	//10%
+	}
+	//check if bot should take pills/adrenaline instead of using medkit
+	if (!bChance && !bInChkPt && !bBW && HasPillsOrAdrenaline(actor))
+	{
+		PrintToServer("[HealAlt] %f: %N will attempt to use pills/adrenaline instead of healing self with medkit.", fTime, actor);
 		SurvivorPillsAdrenHealSelf take = SurvivorPillsAdrenHealSelf();
 		action.ChangeTo(take, "TakePills_InsteadOf_HealSelf");
 		return Plugin_Handled;
 	}
 	
-	//allow bot to heal with medkit if not in safe room and total health < 23
-	if (!allow && !bFirstCP && !bLastCP && iTotalHealth <= MEDKIT_TARGET)
-	{
-		allow = true;
-	}
-	
-	if (allow)
-	{
-		//PrintToServer("[HealAlt] %N will attempt to heal self with medkit: %i/%i/%b/%b/%b/%b prm/tmp/bw/fin/fcp/lcp.", actor, iPermHealth, iTempHealth, bBW, bFinale, bFirstCP, bLastCP);
-	}
-	result.type = allow ? CONTINUE : DONE;
-	return Plugin_Changed;
+	PrintToServer("[HealAlt] %f: %N allowed to heal self with medkit.", fTime, actor);
+	return Plugin_Continue;
 }
 
 /****************************************************************************************************/
@@ -1115,55 +811,27 @@ public Action OnFriendActionMedkit(BehaviorAction action, int actor, BehaviorAct
 {
 	int target = action.Get(0x34) & 0xFFF;
 	bool bHasHealingItems = HasFirstAidKit(target) || HasPillsOrAdrenaline(target);
-	//int iTotalHealthFriend = GetClientHealth(target) + L4D_GetPlayerTempHealth(target);
-	int iPermHealthSelf = GetClientHealth(actor);
-	int iTotalHealthSelf = iPermHealthSelf + L4D_GetPlayerTempHealth(actor);
-	float flowdist = L4D2Direct_GetMapMaxFlowDistance() - L4D2Direct_GetFlowDistance(actor);
-	
-	//check if bot should heal friend with medkit
-	bool allow = GetEntProp(target, Prop_Send, "m_bIsOnThirdStrike") == 1 && !bHasHealingItems;
-
-	//check if bot should give friend pills/adren instead of healing friend with medkit
-	if (!allow && !bHasHealingItems && HasPillsOrAdrenaline(actor))
+	int iTotalHealthFriend = GetClientHealth(target) + L4D_GetPlayerTempHealth(target);
+	int iTotalHealthSelf = GetClientHealth(actor) + L4D_GetPlayerTempHealth(actor);
+	bool bInChkPt = L4D_IsInFirstCheckpoint(target) || L4D_IsInLastCheckpoint(target);
+	float fTime = GetGameTime();
+	//chance to skip action redirect
+	bool bChance = false;
+	if (L4D_IsMissionFinalMap())
 	{
-		int iPillsAdrenId = GetPlayerWeaponSlot(actor, 4);
-		if (IsValidEntity(iPillsAdrenId) && iPillsAdrenId > 0)
-		{
-			static float vPosClient[3], vPosTarget[3], dist, range;
-			GetClientEyePosition(actor, vPosClient);
-			GetClientEyePosition(target, vPosTarget);
-			dist = GetVectorDistance(vPosClient, vPosTarget);
-			range = FindConVar("player_use_radius").FloatValue + LAGNIAPPE;
-			if (dist < range)
-			{
-				static char sPillsAdrenNm[24];
-				GetEntityClassname(iPillsAdrenId, sPillsAdrenNm, sizeof(sPillsAdrenNm));
-				RemovePlayerItem(actor, iPillsAdrenId);
-				GivePlayerItem(target, sPillsAdrenNm);
-				PlaySound(target, SOUND_RCV_HEALITEM);
-				static char sName1[32];
-				GetClientName(actor, sName1, sizeof(sName1));
-				static char sName2[32];
-				GetClientName(target, sName2, sizeof(sName2));
-				if (CharToLower(sPillsAdrenNm[7]) == 'a')
-				{
-					PrintToChatAll("\x04[HealAlt]\x03 %t", "GaveAdren", sName1, sName2);
-				}
-				else
-				{
-					PrintToChatAll("\x04[HealAlt]\x03 %t", "GavePills", sName1, sName2);
-				}
-				//PrintToServer("[HealAlt] %N gave %s to %N.", actor, sPillsAdrenNm, target);
-				return Plugin_Handled;
-			}
-		}
+		bChance = GetRandomInt(1, 10) > 1;	//90%
 	}
-
-	//check if bot should take pills/adren instead of healing friend with medkit
-	if (!allow && HasPillsOrAdrenaline(actor) && (!HasFirstAidKit(actor) || (HasFirstAidKit && GetEntProp(actor, Prop_Send, "m_bIsOnThirdStrike") != 1)) && iTotalHealthSelf <= PILLS_TARGET && (L4D_IsMissionFinalMap() || flowdist > SAFEROOM_RANGE))
+	else
 	{
-		//PrintToServer("[HealAlt] %N will attempt to use pills/adren instead of healing %N with medkit.", actor, target);
-		//Create action to change to
+		bChance = GetRandomInt(1, 10) > 9;	//10%
+	}
+	//check if bot should heal friend with medkit
+	bool allow = (GetEntProp(target, Prop_Send, "m_bIsOnThirdStrike") == 1 && !HasFirstAidKit(target)) || bChance || bInChkPt || (iTotalHealthFriend <= MEDKIT_TARGET && !bHasHealingItems);
+
+	//check if bot should take pills/adrenaline instead of healing friend with medkit
+	if (!allow && HasPillsOrAdrenaline(actor) && (!HasFirstAidKit(actor) || (HasFirstAidKit(actor) && GetEntProp(actor, Prop_Send, "m_bIsOnThirdStrike") != 1)) && iTotalHealthSelf <= PILLS_TARGET)
+	{
+		PrintToServer("[HealAlt] %f: %N will attempt to use pills/adrenaline instead of healing %N with medkit.", fTime, actor, target);
 		SurvivorPillsAdrenHealSelf take = SurvivorPillsAdrenHealSelf();
 		action.ChangeTo(take, "TakePills_InsteadOf_HealFriend");
 		return Plugin_Handled;
@@ -1172,8 +840,7 @@ public Action OnFriendActionMedkit(BehaviorAction action, int actor, BehaviorAct
 	//check if bot should heal self with medkit instead of healing friend with medkit
 	if (!allow && HasFirstAidKit(actor) && (GetEntProp(actor, Prop_Send, "m_bIsOnThirdStrike") == 1 || iTotalHealthSelf <= MEDKIT_TARGET))
 	{
-		//PrintToServer("[HealAlt] %N will attempt to heal self with medkit instead of healing %N with medkit.", actor, target);
-		//Create action to change to
+		PrintToServer("[HealAlt] %f: %N will attempt to heal self with medkit instead of healing %N with medkit.", fTime, actor, target);
 		SurvivorMedkitHealSelf take = SurvivorMedkitHealSelf();
 		action.ChangeTo(take, "HealSelf_InsteadOf_HealFriend");
 		return Plugin_Handled;
@@ -1181,8 +848,13 @@ public Action OnFriendActionMedkit(BehaviorAction action, int actor, BehaviorAct
 	
 	if (allow)
 	{
-		//PrintToServer("[HealAlt] %N will attempt to heal %N with medkit.", actor, target);
+		PrintToServer("[HealAlt] %f: %N allowed to heal %N with medkit.", fTime, actor, target);
 	}
+	else
+	{
+		PrintToServer("[HealAlt] %f: %N blocked from healing %N with medkit.", fTime, actor, target);
+	}
+	
 	result.type = allow ? CONTINUE : DONE;
 	return Plugin_Changed;
 }
@@ -1190,74 +862,42 @@ public Action OnFriendActionMedkit(BehaviorAction action, int actor, BehaviorAct
 /****************************************************************************************************/
 public Action OnSelfActionPills(BehaviorAction action, int actor, BehaviorAction priorAction, ActionResult result)
 {
-	bool allow = true;
-	float flowdist = L4D2Direct_GetMapMaxFlowDistance() - L4D2Direct_GetFlowDistance(actor);
-	static char sMapName[64];
-	GetCurrentMap(sMapName, sizeof(sMapName));
-	
-	//check if bot is too close to ending saferoom to take pills/adren
-	if (!L4D_IsMissionFinalMap() && strncmp(sMapName, "l4d2_tank", 9) != 0 && flowdist < SAFEROOM_RANGE)
+	float fTime = GetGameTime();
+	//check if bot should heal self with medkit instead of taking pills/adrenaline
+	if (HasFirstAidKit(actor) && GetEntProp(actor, Prop_Send, "m_bIsOnThirdStrike") == 1)
 	{
-		allow = false;
+		PrintToServer("[HealAlt] %f: %N will attempt to heal self with medkit instead of taking pills/adrenaline.", fTime, actor);
+		SurvivorMedkitHealSelf take = SurvivorMedkitHealSelf();
+		action.ChangeTo(take, "HealSelf_InsteadOf_TakePills");
+		return Plugin_Handled;
 	}
 	
-	if (allow)
-	{
-		//PrintToServer("[HealAlt] %N will attempt to use pills/adren.", actor);
-	}
-	else
-	{
-		if (!g_bChatSpam[actor])
-			{
-				g_bChatSpam[actor] = true;
-				g_hChatSpam[actor] = CreateTimer(11.0, ChatSpamTimer, actor);
-				//PrintToServer("[HealAlt] %N is too close to ending saferoom and will not use pills/adren.", actor);
-			}
-	}
-	result.type = allow ? CONTINUE : DONE;
-	return Plugin_Changed;
+	PrintToServer("[HealAlt] %f: %N allowed to use pills/adrenaline.", fTime, actor);
+	return Plugin_Continue;
 }
 
 /****************************************************************************************************/
 public Action OnFriendActionPills(BehaviorAction action, int actor, BehaviorAction priorAction, ActionResult result)
 {
 	int target = action.Get(0x34) & 0xFFF;
-	int iTotalHealthFriend = GetClientHealth(target) + L4D_GetPlayerTempHealth(target);
 	int iTotalHealthSelf = GetClientHealth(actor) + L4D_GetPlayerTempHealth(actor);
-	float flowdist_target = L4D2Direct_GetMapMaxFlowDistance() - L4D2Direct_GetFlowDistance(target);
-	float flowdist_actor = L4D2Direct_GetMapMaxFlowDistance() - L4D2Direct_GetFlowDistance(actor);
-	static char sMapName[64];
-	GetCurrentMap(sMapName, sizeof(sMapName));
-
-	//check if bot should give pills/adren to friend
-	bool allow = GetEntProp(target, Prop_Send, "m_bIsOnThirdStrike") == 1 || iTotalHealthFriend <= PILLS_TARGET;
+	float fTime = GetGameTime();
 	
-	//check if friend is too close to ending saferoom to give pills/adren
-	if (allow && !L4D_IsMissionFinalMap() && strncmp(sMapName, "l4d2_tank", 9) != 0 && flowdist_target < SAFEROOM_RANGE)
+	//check if bot should take pills/adrenaline instead of giving pills/adrenaline to friend
+	if (HasPillsOrAdrenaline(actor) && iTotalHealthSelf <= PILLS_TARGET && !(HasFirstAidKit(actor) && GetEntProp(actor, Prop_Send, "m_bIsOnThirdStrike") == 1))
 	{
-		allow = false;
-	}
-	
-	//check if bot should take pills/adren instead of giving pills/adren to friend
-	if (!allow && iTotalHealthSelf <= PILLS_TARGET && flowdist_actor > SAFEROOM_RANGE && (L4D_IsMissionFinalMap() || strncmp(sMapName, "l4d2_tank", 9) == 0))
-	{
-		//PrintToServer("[HealAlt] %N will attempt to use pills/adren instead of giving pills/adren to %N.", actor, target);
-		//Create action to change to
+		PrintToServer("[HealAlt] %f: %N will attempt to use pills/adrenaline instead of giving pills/adrenaline to %N.", fTime, actor, target);
 		SurvivorPillsAdrenHealSelf take = SurvivorPillsAdrenHealSelf();
 		action.ChangeTo(take, "TakePills_InsteadOf_GivePillsToFriend");
 		return Plugin_Handled;
 	}
 	
-	if (allow)
-	{
-		//PrintToServer("[HealAlt] %N will attempt to give pills/adren to %N.", actor, target);
-	}
-	result.type = allow ? CONTINUE : DONE;
-	return Plugin_Changed;
+	PrintToServer("[HealAlt] %f: %N allowed to give pills/adrenaline to %N.", fTime, actor, target);
+	return Plugin_Continue;
 }
 
 // ====================================================================================================
-// Start custom actions
+// OnStart custom actions
 // ====================================================================================================
 public Action SurvivorPillsAdrenHealSelf_OnStart( SurvivorPillsAdrenHealSelf action, int actor, BehaviorAction priorAction, ActionResult result )
 {
@@ -1290,16 +930,12 @@ public Action SurvivorPillsAdrenHealSelf_Update( SurvivorPillsAdrenHealSelf acti
 	{
 		g_bStartPressingM1[actor] = false;
 		g_bStopPressingM1[actor] = true;
-		return action.Done("Used pills/adren");
+		return action.Done("Used pills/adrenaline");
 	}
 	//true=holding, false=switch next frame
 	if (IsHoldingWeapon(actor, 4))
 	{
 		g_bStartPressingM1[actor] = true;
-		if (g_hFailSafePillsAdren[actor] == INVALID_HANDLE)
-		{
-			g_hFailSafePillsAdren[actor] = CreateTimer(3.0, PillsAdrenFSTimer, actor);
-		}
 	}
 	return action.Continue();
 }
@@ -1318,16 +954,12 @@ public Action SurvivorMedkitHealSelf_Update( SurvivorMedkitHealSelf action, int 
 	if (IsHoldingWeapon(actor, 3))
 	{
 		g_bStartPressingM1[actor] = true;
-		if (g_hFailSafeMedkit[actor] == INVALID_HANDLE)
-		{
-			g_hFailSafeMedkit[actor] = CreateTimer(8.0, MedkitFSTimer, actor);
-		}
 	}
 	return action.Continue();
 }
 
 // ====================================================================================================
-// End custom actions
+// OnEnd custom actions
 // ====================================================================================================
 public void SurvivorPillsAdrenHealSelf_OnEnd( SurvivorPillsAdrenHealSelf action, int actor, BehaviorAction priorAction, ActionResult result )
 {
@@ -1340,26 +972,6 @@ public void SurvivorMedkitHealSelf_OnEnd( SurvivorMedkitHealSelf action, int act
 {
 	g_bStartPressingM1[actor] = false;
 	g_bStopPressingM1[actor] = true;
-}
-
-// ====================================================================================================
-// Failsafe to prevent stuck primary mouse button
-// ====================================================================================================
-public Action PillsAdrenFSTimer(Handle timer, int client)
-{
-	g_bStartPressingM1[client] = false;
-	g_bStopPressingM1[client] = true;
-	g_hFailSafePillsAdren[client] = INVALID_HANDLE;
-	return Plugin_Continue;
-}
-
-/****************************************************************************************************/
-public Action MedkitFSTimer(Handle timer, int client)
-{
-	g_bStartPressingM1[client] = false;
-	g_bStopPressingM1[client] = true;
-	g_hFailSafeMedkit[client] = INVALID_HANDLE;
-	return Plugin_Continue;
 }
 
 // ====================================================================================================
@@ -1398,14 +1010,6 @@ public Action OnPlayerRunCmd(int client, int& buttons)
 }
 
 // ====================================================================================================
-// Play sound
-// ====================================================================================================
-void PlaySound(int client, const char sound[32])
-{
-	EmitSoundToClient(client, sound, SOUND_FROM_PLAYER, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, SNDVOL_NORMAL, SNDPITCH_NORMAL, -1, NULL_VECTOR, NULL_VECTOR, true, 0.0);
-}
-
-// ====================================================================================================
 // Prevent spamming chat messages
 // ====================================================================================================
 public Action ChatSpamTimer(Handle timer, int client)
@@ -1413,6 +1017,14 @@ public Action ChatSpamTimer(Handle timer, int client)
 	g_bChatSpam[client] = false;
 	g_hChatSpam[client] = INVALID_HANDLE;
 	return Plugin_Continue;
+}
+
+// ====================================================================================================
+// Common client check
+// ====================================================================================================
+public bool IsInGameAliveSurvivor(int client)
+{
+	return IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == SURVIVOR_TEAM;
 }
 
 // ====================================================================================================
@@ -1452,7 +1064,10 @@ public bool IsHoldingWeapon(int client, int slot)
 		//active weapon is weapon in specified slot
 		return true;
 	}
-	//switch to weapon in slot and check again in next frame
-	EquipPlayerWeapon(client, iWeaponSlot);
+	//get name of weapon in slot
+	static char sWeapon[32];
+	GetEdictClassname(iWeaponSlot, sWeapon, sizeof(sWeapon));
+	//switch slot weapon to active weapon and check again in next frame
+	FakeClientCommand(client, "use %s", sWeapon);
 	return false;
 }
